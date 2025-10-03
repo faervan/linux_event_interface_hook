@@ -1,7 +1,7 @@
-use std::{error::Error, time::Duration};
+use std::{error::Error, fs::File, time::Duration};
 
 pub fn cli_parse() -> Result<Vec<FileListener>, Box<dyn Error>> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let args = std::env::args().skip(2).collect::<Vec<_>>();
 
     let mut files = vec![];
 
@@ -50,8 +50,12 @@ pub fn cli_parse() -> Result<Vec<FileListener>, Box<dyn Error>> {
                 delayed_cmd,
             });
         }
+
+        let file = File::open(&group[0]).expect("File cannot be opened");
+
         files.push(FileListener {
-            file: group[0].clone(),
+            path: group[0].clone(),
+            file,
             actions,
         });
     }
@@ -63,7 +67,8 @@ pub fn cli_parse() -> Result<Vec<FileListener>, Box<dyn Error>> {
 
 #[derive(Debug)]
 pub struct FileListener {
-    pub file: String,
+    pub path: String,
+    pub file: File,
     pub actions: Vec<KeyListener>,
 }
 

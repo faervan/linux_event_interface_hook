@@ -1,8 +1,4 @@
-use std::{
-    error::Error,
-    thread::{self, sleep},
-    time::Duration,
-};
+use std::{error::Error, thread::sleep, time::Duration};
 
 mod cli_parse;
 mod listener;
@@ -41,20 +37,24 @@ pub enum EventType {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    assert_eq!(size_of::<InputEvent>(), 24);
-    let files = cli_parse::cli_parse()?;
+    let poll_interval = std::env::args()
+        .nth(1)
+        .expect("Provide a poll interval")
+        .parse()
+        .expect("Poll interval needs to be a u64 (unsigned long integer)");
 
-    let mut handles = vec![];
-    for listener in files {
-        handles.push(thread::spawn(move || {
-            if let Err(e) = listener::listen(listener) {
+    assert_eq!(size_of::<InputEvent>(), 24);
+    let mut listeners = cli_parse::cli_parse()?;
+
+    let mut buf = [0; 24];
+    loop {
+        for listener in &mut listeners {
+            if let Err(e) = listener::poll(listener, &mut buf) {
                 eprintln!("{e}");
             }
-        }));
-    }
+        }
 
-    loop {
-        sleep(Duration::from_secs(5));
+        sleep(Duration::from_millis(poll_interval));
     }
 }
 
