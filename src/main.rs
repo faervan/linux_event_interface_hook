@@ -1,4 +1,11 @@
-use std::{error::Error, fs::File, io::Read, process::Command};
+use std::{
+    error::Error,
+    thread::{self, sleep},
+    time::Duration,
+};
+
+mod cli_parse;
+mod listener;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -34,51 +41,20 @@ pub enum EventType {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut stream = File::open("/dev/input/event3")?;
     assert_eq!(size_of::<InputEvent>(), 24);
-    let mut buffer = [0; 24];
+    let files = cli_parse::cli_parse()?;
 
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
-    let [ref home_cmd, ref vol_up_cmd] = args[..] else {
-        return Err("Needs two arguments:\n\
-            1. Bash command to be executed on Home button press\n\
-            2. Bash command to be executed on Volume up button input"
-            .into());
-    };
-
-    loop {
-        stream.read_exact(&mut buffer)?;
-        // SAFETY: buffer is exactly the size of InputEvent
-        let event: InputEvent = unsafe { std::ptr::read(buffer.as_ptr() as *const _) };
-        let type_ = EventType::from(event.type_);
-
-        if type_ == EventType::Key && event.value == 1 {
-            // some key was pressed
-            let mut cmd = None;
-            match event.code {
-                115 => {
-                    println!("Volume up button was pressed");
-                    cmd = Some(vol_up_cmd);
-                }
-                172 => {
-                    println!("Home button was pressed");
-                    cmd = Some(home_cmd);
-                }
-                n => println!("{n}: unknown key value"),
-            }
-            if let Some(cmd) = cmd
-                && let Err(e) = Command::new("bash").arg("-c").arg(cmd).spawn()
-            {
+    let mut handles = vec![];
+    for listener in files {
+        handles.push(thread::spawn(move || {
+            if let Err(e) = listener::listen(listener) {
                 eprintln!("{e}");
             }
-        }
+        }));
+    }
 
-        let mut code_fmt = type_.code(event.code).to_string();
-        if !code_fmt.is_empty() {
-            code_fmt = format!("\ncode: {code_fmt}");
-        }
-        println!("\n");
-        println!("{:?}\ntype: {:?}{code_fmt}", event, type_,);
+    loop {
+        sleep(Duration::from_secs(5));
     }
 }
 
