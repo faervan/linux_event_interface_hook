@@ -37,14 +37,8 @@ pub enum EventType {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let poll_interval = std::env::args()
-        .nth(1)
-        .expect("Provide a poll interval")
-        .parse()
-        .expect("Poll interval needs to be a u64 (unsigned long integer)");
-
     assert_eq!(size_of::<InputEvent>(), 24);
-    let mut listeners = cli_parse::cli_parse()?;
+    let (poll_interval, mut listeners) = cli_parse::cli_parse()?;
 
     let mut buf = [0; 24];
     loop {

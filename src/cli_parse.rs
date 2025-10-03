@@ -1,7 +1,14 @@
 use std::{error::Error, fs::File, time::Duration};
 
-pub fn cli_parse() -> Result<Vec<FileListener>, Box<dyn Error>> {
-    let args = std::env::args().skip(2).collect::<Vec<_>>();
+pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
+    let mut args = std::env::args().skip(1);
+    let poll_interval = args
+        .next()
+        .expect("Provide a poll interval in milliseconds")
+        .parse()
+        .expect("Poll interval needs to be a u64 (unsigned long integer)");
+
+    let args = args.collect::<Vec<_>>();
 
     let mut files = vec![];
 
@@ -9,7 +16,7 @@ pub fn cli_parse() -> Result<Vec<FileListener>, Box<dyn Error>> {
         if group.is_empty() {
             println!(
                 "Example usage:\n\
-                $thisbinary /dev/input/event0 12 \"niri msg action toggle-overview\" \
+                $thisbinary 100 /dev/input/event0 12 \"niri msg action toggle-overview\" \
                 - /dev/input/event1 13 \"echo this is a bash cmd\":5:\"poweroff\"\n\
                 \n\
                 Provide a file name, then add pairs of value (~key code) and a bash \
@@ -62,7 +69,7 @@ pub fn cli_parse() -> Result<Vec<FileListener>, Box<dyn Error>> {
 
     println!("Files: {files:#?}");
 
-    Ok(files)
+    Ok((poll_interval, files))
 }
 
 #[derive(Debug)]
