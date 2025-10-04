@@ -37,10 +37,9 @@ pub enum EventType {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    assert_eq!(size_of::<InputEvent>(), 24);
     let (poll_interval, mut listeners) = cli_parse::cli_parse()?;
 
-    let mut buf = [0; 24];
+    let mut buf = [0; size_of::<InputEvent>()];
     loop {
         for listener in &mut listeners {
             if let Err(e) = listener::poll(listener, &mut buf) {

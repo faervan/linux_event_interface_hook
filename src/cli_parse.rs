@@ -1,4 +1,11 @@
-use std::{error::Error, fs::File, time::Duration};
+use std::{
+    collections::HashMap,
+    error::Error,
+    ffi::CString,
+    fs::File,
+    os::fd::FromRawFd,
+    time::{Duration, Instant},
+};
 
 pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
     let mut args = std::env::args().skip(1);
@@ -51,19 +58,36 @@ pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
                 _ => (cmds.to_string(), None),
             };
             let value = value.parse()?;
-            actions.push(KeyListener {
-                value,
+            actions.push(Key {
+                code: value,
                 cmd,
                 delayed_cmd,
             });
         }
 
-        let file = File::open(&group[0]).expect("File cannot be opened");
+        let fd = unsafe {
+            libc::open(
+                CString::new(group[0].clone())
+                    .expect("Failed to create CString from the provided path")
+                    .into_raw(),
+                // Set O_NONBLOCK
+                0x00020000,
+            )
+        };
+        if fd < 0 {
+            unsafe {
+                libc::perror(CString::new("open").unwrap().into_raw());
+            }
+            panic!("Failed to open {}", group[0]);
+        }
+        // SAFETY: Just opened it, so it should be a valid fd
+        let file = unsafe { File::from_raw_fd(fd) };
 
         files.push(FileListener {
             path: group[0].clone(),
             file,
             actions,
+            schedules: HashMap::new(),
         });
     }
 
@@ -76,12 +100,13 @@ pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
 pub struct FileListener {
     pub path: String,
     pub file: File,
-    pub actions: Vec<KeyListener>,
+    pub actions: Vec<Key>,
+    pub schedules: HashMap<usize, Instant>,
 }
 
 #[derive(Debug)]
-pub struct KeyListener {
-    pub value: u16,
+pub struct Key {
+    pub code: u16,
     pub cmd: String,
     pub delayed_cmd: Option<(Duration, String)>,
 }

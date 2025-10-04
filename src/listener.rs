@@ -1,8 +1,30 @@
-use std::{error::Error, ffi::OsStr, io::Read as _, process::Command};
+use std::{error::Error, ffi::OsStr, fmt::Display, io::Read as _, process::Command, time::Instant};
 
 use crate::{EventType, InputEvent, cli_parse::FileListener};
 
-pub fn poll(listener: &mut FileListener, buffer: &mut [u8]) -> Result<(), Box<dyn Error>> {
+pub fn poll(
+    listener: &mut FileListener,
+    buffer: &mut [u8; size_of::<InputEvent>()],
+) -> Result<(), Box<dyn Error>> {
+    println!("{} schedules", listener.schedules.len());
+    let finished_schedules =
+        listener
+            .schedules
+            .iter()
+            .fold(vec![], |mut acc, (index, schedule_time)| {
+                let (duration, cmd) = listener.actions[*index].delayed_cmd.as_ref().unwrap();
+                println!("elapsed: {}", schedule_time.elapsed().as_secs_f32());
+                if schedule_time.elapsed() > *duration {
+                    command(cmd);
+                    acc.push(*index);
+                }
+                acc
+            });
+
+    for index in finished_schedules {
+        listener.schedules.remove(&index);
+    }
+
     let n = listener.file.read(buffer)?;
     if n == 0 {
         return Ok(());
@@ -14,14 +36,19 @@ pub fn poll(listener: &mut FileListener, buffer: &mut [u8]) -> Result<(), Box<dy
     let event: InputEvent = unsafe { std::ptr::read(buffer.as_ptr() as *const _) };
     let type_ = EventType::from(event.type_);
 
-    if type_ == EventType::Key && event.value == 1 {
+    if type_ == EventType::Key {
         // some key was pressed
-        for action in &listener.actions {
-            if event.code == action.value {
-                if let Some((_duration, _delayed_cmd)) = &action.delayed_cmd {
-                    todo!();
+        for (index, action) in listener.actions.iter_mut().enumerate() {
+            if event.code == action.code {
+                if event.value == 1 {
+                    if action.delayed_cmd.is_some() {
+                        listener.schedules.insert(index, Instant::now());
+                    } else {
+                        command(&action.cmd);
+                    }
+                } else if event.value == 0 && listener.schedules.remove(&index).is_some() {
+                    command(&action.cmd);
                 }
-                command(&action.cmd);
                 break;
             }
         }
@@ -30,7 +57,7 @@ pub fn poll(listener: &mut FileListener, buffer: &mut [u8]) -> Result<(), Box<dy
     let mut code_fmt = type_.code(event.code).to_string();
     println!("\n\nfrom {}:", listener.path);
     if !code_fmt.is_empty() {
-        code_fmt = format!("code: {code_fmt}");
+        code_fmt = format!("\ncode: {code_fmt}");
     }
     println!("{:?}\ntype: {:?}{code_fmt}", event, type_,);
 
@@ -39,8 +66,9 @@ pub fn poll(listener: &mut FileListener, buffer: &mut [u8]) -> Result<(), Box<dy
 
 fn command<S>(cmd: S)
 where
-    S: AsRef<OsStr>,
+    S: AsRef<OsStr> + Display,
 {
+    println!("executing:\nbash -c \"{cmd}\"");
     if let Err(e) = Command::new("bash").arg("-c").arg(cmd).spawn() {
         eprintln!("{e}");
     }
