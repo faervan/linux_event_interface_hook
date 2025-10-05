@@ -1,23 +1,7 @@
-use std::{error::Error, thread::sleep, time::Duration};
+use std::error::Error;
 
 mod cli_parse;
 mod listener;
-
-#[derive(Debug)]
-#[repr(C)]
-struct Time {
-    sec: i64,
-    usec: i64,
-}
-
-#[derive(Debug)]
-#[repr(C)]
-struct InputEvent {
-    timeval: Time,
-    type_: u16,
-    code: u16,
-    value: u32,
-}
 
 #[derive(Debug, PartialEq)]
 #[repr(u16)]
@@ -38,16 +22,31 @@ pub enum EventType {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let (poll_interval, mut listeners) = cli_parse::cli_parse()?;
+    let mut fds = listeners
+        .iter()
+        .map(|file| libc::pollfd {
+            fd: file.descriptor,
+            events: libc::POLLIN,
+            revents: 0,
+        })
+        .collect::<Vec<_>>();
 
-    let mut buf = [0; size_of::<InputEvent>()];
+    let mut buf = [0; size_of::<libc::input_event>()];
     loop {
-        for listener in &mut listeners {
-            if let Err(e) = listener::poll(listener, &mut buf) {
+        unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as u64, 0) };
+        for (i, fd) in fds
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, fd)| fd.revents & libc::POLLIN != 0)
+        {
+            if let Err(e) = listener::read(&mut listeners[i], &mut buf) {
                 eprintln!("{e}");
             }
+            fd.revents = 0;
         }
 
-        sleep(Duration::from_millis(poll_interval));
+        println!("sleeping");
+        std::thread::sleep(std::time::Duration::from_millis(poll_interval as u64));
     }
 }
 

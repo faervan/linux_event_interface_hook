@@ -1,19 +1,18 @@
 use std::{
     collections::HashMap,
     error::Error,
-    ffi::CString,
     fs::File,
-    os::fd::FromRawFd,
+    os::fd::{AsRawFd, RawFd},
     time::{Duration, Instant},
 };
 
-pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
+pub fn cli_parse() -> Result<(i32, Vec<FileListener>), Box<dyn Error>> {
     let mut args = std::env::args().skip(1);
     let poll_interval = args
         .next()
         .expect("Provide a poll interval in milliseconds")
         .parse()
-        .expect("Poll interval needs to be a u64 (unsigned long integer)");
+        .expect("Poll interval needs to be a i32 (unsigned long integer)");
 
     let args = args.collect::<Vec<_>>();
 
@@ -42,7 +41,7 @@ pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
         let mut actions = vec![];
         for action in group[1..].chunks_exact(2) {
             let [ref value, ref cmds] = action[..] else {
-                unreachable!()
+                unreachable!("We called chunks_exact(2)")
             };
             let (cmd, delayed_cmd) = match cmds.splitn(3, ':').collect::<Vec<_>>().as_slice() {
                 [cmd, duration, delayed_cmd] => {
@@ -65,26 +64,11 @@ pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
             });
         }
 
-        let fd = unsafe {
-            libc::open(
-                CString::new(group[0].clone())
-                    .expect("Failed to create CString from the provided path")
-                    .into_raw(),
-                // Set O_NONBLOCK
-                0x00020000,
-            )
-        };
-        if fd < 0 {
-            unsafe {
-                libc::perror(CString::new("open").unwrap().into_raw());
-            }
-            panic!("Failed to open {}", group[0]);
-        }
-        // SAFETY: Just opened it, so it should be a valid fd
-        let file = unsafe { File::from_raw_fd(fd) };
+        let file = File::open(&group[0]).expect("Failed to open file");
 
         files.push(FileListener {
             path: group[0].clone(),
+            descriptor: file.as_raw_fd(),
             file,
             actions,
             schedules: HashMap::new(),
@@ -100,6 +84,7 @@ pub fn cli_parse() -> Result<(u64, Vec<FileListener>), Box<dyn Error>> {
 pub struct FileListener {
     pub path: String,
     pub file: File,
+    pub descriptor: RawFd,
     pub actions: Vec<Key>,
     pub schedules: HashMap<usize, Instant>,
 }

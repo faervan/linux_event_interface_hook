@@ -1,10 +1,10 @@
 use std::{error::Error, ffi::OsStr, fmt::Display, io::Read as _, process::Command, time::Instant};
 
-use crate::{EventType, InputEvent, cli_parse::FileListener};
+use crate::{EventType, cli_parse::FileListener};
 
-pub fn poll(
+pub fn read(
     listener: &mut FileListener,
-    buffer: &mut [u8; size_of::<InputEvent>()],
+    buffer: &mut [u8; size_of::<libc::input_event>()],
 ) -> Result<(), Box<dyn Error>> {
     println!("{} schedules", listener.schedules.len());
     let finished_schedules =
@@ -33,7 +33,7 @@ pub fn poll(
     }
 
     // SAFETY: buffer is exactly the size of InputEvent
-    let event: InputEvent = unsafe { std::ptr::read(buffer.as_ptr() as *const _) };
+    let event: libc::input_event = unsafe { std::ptr::read(buffer.as_ptr() as *const _) };
     let type_ = EventType::from(event.type_);
 
     if type_ == EventType::Key {
