@@ -1,5 +1,7 @@
 use std::error::Error;
 
+use crate::listener::command;
+
 mod cli_parse;
 mod listener;
 
@@ -33,7 +35,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut buf = [0; size_of::<libc::input_event>()];
     loop {
-        unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as u64, 0) };
+        unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as u64, poll_interval) };
         for (i, fd) in fds
             .iter_mut()
             .enumerate()
@@ -45,8 +47,26 @@ fn main() -> Result<(), Box<dyn Error>> {
             fd.revents = 0;
         }
 
-        println!("sleeping");
-        std::thread::sleep(std::time::Duration::from_millis(poll_interval as u64));
+        // Check if some key was pressed long enough for its delayed command to be executed.
+        for listener in &mut listeners {
+            let finished_schedules =
+                listener
+                    .schedules
+                    .iter()
+                    .fold(vec![], |mut acc, (index, schedule_time)| {
+                        let (duration, cmd) =
+                            listener.actions[*index].delayed_cmd.as_ref().unwrap();
+                        if schedule_time.elapsed() > *duration {
+                            command(cmd);
+                            acc.push(*index);
+                        }
+                        acc
+                    });
+
+            for index in finished_schedules {
+                listener.schedules.remove(&index);
+            }
+        }
     }
 }
 

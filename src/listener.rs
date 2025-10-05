@@ -6,25 +6,6 @@ pub fn read(
     listener: &mut FileListener,
     buffer: &mut [u8; size_of::<libc::input_event>()],
 ) -> Result<(), Box<dyn Error>> {
-    println!("{} schedules", listener.schedules.len());
-    let finished_schedules =
-        listener
-            .schedules
-            .iter()
-            .fold(vec![], |mut acc, (index, schedule_time)| {
-                let (duration, cmd) = listener.actions[*index].delayed_cmd.as_ref().unwrap();
-                println!("elapsed: {}", schedule_time.elapsed().as_secs_f32());
-                if schedule_time.elapsed() > *duration {
-                    command(cmd);
-                    acc.push(*index);
-                }
-                acc
-            });
-
-    for index in finished_schedules {
-        listener.schedules.remove(&index);
-    }
-
     let n = listener.file.read(buffer)?;
     if n == 0 {
         return Ok(());
@@ -64,7 +45,7 @@ pub fn read(
     Ok(())
 }
 
-fn command<S>(cmd: S)
+pub fn command<S>(cmd: S)
 where
     S: AsRef<OsStr> + Display,
 {
