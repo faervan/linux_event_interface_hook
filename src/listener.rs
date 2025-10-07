@@ -49,7 +49,7 @@ pub fn command<S>(cmd: S)
 where
     S: AsRef<OsStr> + Display,
 {
-    println!("executing:\nbash -c \"{cmd}\"");
+    println!("executing:\nsh -c \"{cmd}\"");
     if let Err(e) = Command::new("bash").arg("-c").arg(cmd).spawn() {
         eprintln!("{e}");
     }
